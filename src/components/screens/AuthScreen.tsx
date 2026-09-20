@@ -68,7 +68,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
   const [regOtpCode, setRegOtpCode] = useState('');
   const [regOtpLoading, setRegOtpLoading] = useState(false);
   const [regOtpError, setRegOtpError] = useState<string | null>(null);
-  const [evaluatorCode, setEvaluatorCode] = useState<string | null>(null);
 
   // -------------------------------------------------------------------------
   // Login submit — Email + Password only
@@ -130,7 +129,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     }
 
     setRegLoading(true);
-    setEvaluatorCode(null);
 
     try {
       // 1. First trigger registration in Supabase
@@ -147,10 +145,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
 
       // 2. Send 6-Digit OTP to user's email
       if (onSendOtp) {
-        const otpRes = await onSendOtp(regEmail);
-        if (otpRes.devCode) {
-          setEvaluatorCode(otpRes.devCode);
-        }
+        await onSendOtp(regEmail);
       }
 
       // Transition to OTP verification step
@@ -207,10 +202,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     setRegOtpLoading(true);
     setRegOtpError(null);
     try {
-      const res = await onSendOtp(regEmail);
-      if (res.devCode) {
-        setEvaluatorCode(res.devCode);
-      }
+      await onSendOtp(regEmail);
     } catch {
       setRegOtpError('Could not resend OTP.');
     } finally {
@@ -570,34 +562,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                     <div className="auth-header">
                       <h2 className="auth-title">Verify Email with OTP</h2>
                       <p className="auth-sub" style={{ margin: 0 }}>
-                        Enter the 6-digit code sent to <strong style={{ color: '#E8B042' }}>{regEmail}</strong>.
+                        Enter the 6-digit OTP code sent to your email <strong style={{ color: '#E8B042' }}>{regEmail}</strong>.
                       </p>
                     </div>
-
-                    {/* Evaluator Live Guard Banner (If SMTP rate limit occurred) */}
-                    {evaluatorCode && (
-                      <div style={{
-                        background: 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(16,185,129,0.1))',
-                        border: '1.5px solid rgba(34,197,94,0.4)',
-                        borderRadius: '12px',
-                        padding: '12px 16px',
-                        margin: '16px 0',
-                        textAlign: 'left'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                          <span>🛡️</span>
-                          <span style={{ color: '#4ADE80', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase' }}>
-                            Evaluator Security Code
-                          </span>
-                        </div>
-                        <p style={{ margin: '0 0 6px', color: '#E2E8F0', fontSize: '0.85rem' }}>
-                          Live evaluation bypass code:
-                        </p>
-                        <div style={{ fontSize: '1.5rem', fontWeight: 800, letterSpacing: '4px', color: '#FCD34D' }}>
-                          {evaluatorCode}
-                        </div>
-                      </div>
-                    )}
 
                     <form className="auth-form" onSubmit={handleVerifyOtpSubmit} noValidate style={{ marginTop: '16px' }}>
                       {regOtpError && (
