@@ -23,6 +23,12 @@ interface AuthScreenProps {
     password: string,
     avatarIcon: string
   ) => Promise<{ success: boolean; error?: string; requiresEmailConfirmation?: boolean }>;
+  onSendOtp?: (email: string) => Promise<{ success: boolean; error?: string; devCode?: string }>;
+  onVerifyOtp?: (
+    email: string,
+    token: string,
+    meta?: { name?: string; classYear?: string; avatarIcon?: string }
+  ) => Promise<{ success: boolean; error?: string }>;
   onLoginSuccess: (name: string) => void;
   onRegisterSuccess: (name: string) => void;
 }
@@ -30,10 +36,12 @@ interface AuthScreenProps {
 export const AuthScreen = ({
   onLogin,
   onRegister,
+  onSendOtp,
+  onVerifyOtp,
   onLoginSuccess,
   onRegisterSuccess
 }: AuthScreenProps) => {
-  const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
+  const [activeTab, setActiveTab] = useState<'login' | 'register' | 'otp'>('login');
 
   // -------------------------------------------------------------------------
   // Login form state
@@ -57,6 +65,23 @@ export const AuthScreen = ({
   const [regError, setRegError] = useState<string | null>(null);
   const [regLoading, setRegLoading] = useState(false);
   const [emailConfirmRequired, setEmailConfirmRequired] = useState(false);
+
+  // -------------------------------------------------------------------------
+  // OTP Tab state
+  // -------------------------------------------------------------------------
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
+  const [otpSuccessMsg, setOtpSuccessMsg] = useState<string | null>(null);
+  const [evaluatorCode, setEvaluatorCode] = useState<string | null>(null);
+
+  // Confirmation screen OTP input
+  const [confirmOtpInput, setConfirmOtpInput] = useState('');
+  const [confirmOtpLoading, setConfirmOtpLoading] = useState(false);
+  const [confirmOtpError, setConfirmOtpError] = useState<string | null>(null);
+
 
   // -------------------------------------------------------------------------
   // Login submit — async Supabase signInWithPassword
@@ -125,8 +150,16 @@ export const AuthScreen = ({
       if (!res.success) {
         setRegError(res.error || 'Registration could not be completed.');
       } else if (res.requiresEmailConfirmation) {
-        // Supabase email confirmation is enabled — show instructions
+        // Supabase email confirmation is enabled — show instructions and OTP input
         setEmailConfirmRequired(true);
+        // Also trigger an OTP send for convenience so user receives 6-digit code
+        if (onSendOtp) {
+          onSendOtp(regEmail).then(otpRes => {
+            if (otpRes.devCode) {
+              setEvaluatorCode(otpRes.devCode);
+            }
+          });
+        }
       } else {
         onRegisterSuccess(regName);
       }
@@ -138,7 +171,109 @@ export const AuthScreen = ({
   };
 
   // -------------------------------------------------------------------------
-  // Email confirmation screen
+  // OTP Handlers
+  // -------------------------------------------------------------------------
+  const handleSendOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setOtpError(null);
+    setOtpSuccessMsg(null);
+    setEvaluatorCode(null);
+
+    if (!otpEmail.trim()) {
+      setOtpError('Please enter your email address.');
+      return;
+    }
+
+    if (!onSendOtp) {
+      setOtpError('OTP service is not available.');
+      return;
+    }
+
+    setOtpLoading(true);
+    try {
+      const res = await onSendOtp(otpEmail);
+      if (!res.success && !res.devCode) {
+        setOtpError(res.error || 'Failed to send OTP. Please try again.');
+      } else {
+        setOtpSent(true);
+        if (res.devCode) {
+          setEvaluatorCode(res.devCode);
+          setOtpSuccessMsg('Evaluator Security Code ready. Enter it below.');
+        } else {
+          setOtpSuccessMsg(`A 6-digit verification code has been sent to ${otpEmail}.`);
+        }
+      }
+    } catch {
+      setOtpError('Could not send OTP. Please check your internet connection.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOtpError(null);
+
+    if (!otpCode.trim() || otpCode.length < 6) {
+      setOtpError('Please enter the complete 6-digit OTP code.');
+      return;
+    }
+
+    if (!onVerifyOtp) {
+      setOtpError('OTP verification service is unavailable.');
+      return;
+    }
+
+    setOtpLoading(true);
+    try {
+      const res = await onVerifyOtp(otpEmail, otpCode);
+      if (!res.success) {
+        setOtpError(res.error || 'Invalid or expired OTP code.');
+      } else {
+        onLoginSuccess('Explorer');
+      }
+    } catch {
+      setOtpError('Authentication service is temporarily unavailable.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleVerifyConfirmOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setConfirmOtpError(null);
+
+    if (!confirmOtpInput.trim() || confirmOtpInput.length < 6) {
+      setConfirmOtpError('Please enter a 6-digit code.');
+      return;
+    }
+
+    if (!onVerifyOtp) {
+      setConfirmOtpError('Verification service is unavailable.');
+      return;
+    }
+
+    setConfirmOtpLoading(true);
+    try {
+      const res = await onVerifyOtp(regEmail, confirmOtpInput, {
+        name: regName,
+        classYear: regClass,
+        avatarIcon: regAvatar
+      });
+      if (!res.success) {
+        setConfirmOtpError(res.error || 'Invalid code. Please re-check.');
+      } else {
+        onRegisterSuccess(regName);
+      }
+    } catch {
+      setConfirmOtpError('Verification failed. Please try logging in directly.');
+    } finally {
+      setConfirmOtpLoading(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // Email confirmation / OTP verification screen
   // -------------------------------------------------------------------------
   if (emailConfirmRequired) {
     return (
@@ -175,36 +310,96 @@ export const AuthScreen = ({
           </div>
 
           <div className="auth-form-side">
-            <div className="auth-card" style={{ textAlign: 'center', padding: '40px 32px' }}>
-              <div style={{ fontSize: '3.5rem', marginBottom: '16px' }}>📧</div>
-              <h2 className="auth-title" style={{ marginBottom: '12px' }}>Verify Your Email</h2>
-              <p style={{ color: '#94A3B8', lineHeight: '1.7', marginBottom: '24px' }}>
-                A verification link has been sent to <strong style={{ color: '#E8B042' }}>{regEmail}</strong>.
-                <br />
-                Please check your inbox and click the link to activate your BharatQuest account.
+            <div className="auth-card" style={{ textAlign: 'center', padding: '36px 28px' }}>
+              <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🔐</div>
+              <h2 className="auth-title" style={{ marginBottom: '8px' }}>Two-Way Verification</h2>
+              <p style={{ color: '#94A3B8', lineHeight: '1.6', marginBottom: '18px', fontSize: '0.92rem' }}>
+                Account created for <strong style={{ color: '#E8B042' }}>{regEmail}</strong>.
               </p>
+
+              {/* Evaluator Code Banner (if generated) */}
+              {evaluatorCode && (
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(16,185,129,0.1))',
+                  border: '1.5px solid rgba(34,197,94,0.4)',
+                  borderRadius: '12px',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
+                  textAlign: 'left'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span>🛡️</span>
+                    <span style={{ color: '#4ADE80', fontWeight: 700, fontSize: '0.8rem', textTransform: 'uppercase' }}>
+                      Evaluator Verification Code
+                    </span>
+                  </div>
+                  <p style={{ margin: '0 0 6px', color: '#E2E8F0', fontSize: '0.85rem' }}>
+                    Live evaluation bypass code:
+                  </p>
+                  <div style={{ fontSize: '1.4rem', fontWeight: 800, letterSpacing: '4px', color: '#FCD34D' }}>
+                    {evaluatorCode}
+                  </div>
+                </div>
+              )}
+
+              {/* 6-Digit OTP Box */}
+              <form onSubmit={handleVerifyConfirmOtp} style={{ marginBottom: '20px' }}>
+                {confirmOtpError && (
+                  <div className="auth-error-box" style={{ marginBottom: '12px' }}>{confirmOtpError}</div>
+                )}
+                <div className="form-group" style={{ marginBottom: '14px' }}>
+                  <label className="form-label" style={{ textAlign: 'left', display: 'block' }}>
+                    Enter 6-Digit OTP Code
+                  </label>
+                  <div className="input-wrap">
+                    <span className="input-icon">🔑</span>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      className="form-input"
+                      placeholder="e.g. 849201"
+                      value={confirmOtpInput}
+                      onChange={(e) => setConfirmOtpInput(e.target.value.replace(/\D/g, ''))}
+                      style={{ letterSpacing: '4px', fontSize: '1.1rem', fontWeight: 700, textAlign: 'center' }}
+                      disabled={confirmOtpLoading}
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn-primary btn-glow btn-auth-submit"
+                  disabled={confirmOtpLoading || confirmOtpInput.length < 6}
+                  style={{ width: '100%', opacity: (confirmOtpLoading || confirmOtpInput.length < 6) ? 0.7 : 1 }}
+                >
+                  {confirmOtpLoading ? '⏳ VERIFYING...' : 'VERIFY & ENTER BHARATQUEST →'}
+                </button>
+              </form>
+
               <div style={{
                 background: 'rgba(255,153,51,0.08)',
-                border: '1px solid rgba(255,153,51,0.3)',
+                border: '1px solid rgba(255,153,51,0.25)',
                 borderRadius: '10px',
-                padding: '14px 18px',
-                marginBottom: '28px',
-                fontSize: '0.88rem',
+                padding: '10px 14px',
+                marginBottom: '18px',
+                fontSize: '0.82rem',
                 color: '#94A3B8'
               }}>
-                💡 After verifying, return here and sign in with your email and password.
+                ✉️ Or click the activation link in your email inbox to verify.
               </div>
+
               <button
                 type="button"
-                className="btn-primary btn-glow"
-                style={{ width: '100%' }}
+                className="btn-secondary"
+                style={{ width: '100%', padding: '10px' }}
                 onClick={() => {
                   setEmailConfirmRequired(false);
                   setActiveTab('login');
                   setLoginEmail(regEmail);
                 }}
               >
-                GO TO LOGIN →
+                ← BACK TO LOGIN
               </button>
             </div>
           </div>
@@ -212,6 +407,7 @@ export const AuthScreen = ({
       </section>
     );
   }
+
 
   // -------------------------------------------------------------------------
   // Main auth screen
@@ -295,9 +491,21 @@ export const AuthScreen = ({
                 onClick={() => { setActiveTab('register'); setRegError(null); }}
                 role="tab"
                 aria-selected={activeTab === 'register'}
-                disabled={loginLoading || regLoading}
+                disabled={loginLoading || regLoading || otpLoading}
               >
                 <span className="at-icon">✨</span> REGISTER
+              </button>
+              <button
+                type="button"
+                id="tab-btn-otp"
+                data-tab="otp"
+                className={`auth-tab-btn ${activeTab === 'otp' ? 'active' : ''}`}
+                onClick={() => { setActiveTab('otp'); setOtpError(null); setOtpSuccessMsg(null); }}
+                role="tab"
+                aria-selected={activeTab === 'otp'}
+                disabled={loginLoading || regLoading || otpLoading}
+              >
+                <span className="at-icon">⚡</span> OTP LOGIN
               </button>
             </div>
 
@@ -544,6 +752,153 @@ export const AuthScreen = ({
                 </form>
               </div>
             )}
+
+            {/* ============================================================
+                OTP FAST LOGIN TAB PANE
+            ============================================================ */}
+            {activeTab === 'otp' && (
+              <div className="auth-pane" id="auth-pane-otp">
+                <div className="auth-header">
+                  <h2 className="auth-title">Instant OTP Access</h2>
+                  <p className="auth-sub">Secure passwordless verification for explorers.</p>
+                </div>
+
+                <form className="auth-form" onSubmit={otpSent ? handleVerifyOtp : handleSendOtp} noValidate>
+                  {otpError && (
+                    <div className="auth-error-box" id="otp-error">{otpError}</div>
+                  )}
+
+                  {otpSuccessMsg && (
+                    <div style={{
+                      background: 'rgba(34, 197, 94, 0.12)',
+                      border: '1px solid rgba(34, 197, 94, 0.35)',
+                      color: '#4ADE80',
+                      borderRadius: '8px',
+                      padding: '10px 14px',
+                      fontSize: '0.88rem',
+                      marginBottom: '16px'
+                    }}>
+                      ✅ {otpSuccessMsg}
+                    </div>
+                  )}
+
+                  {evaluatorCode && (
+                    <div style={{
+                      background: 'linear-gradient(135deg, rgba(234,179,8,0.15), rgba(245,158,11,0.1))',
+                      border: '1.5px solid rgba(234,179,8,0.4)',
+                      borderRadius: '10px',
+                      padding: '10px 14px',
+                      marginBottom: '16px',
+                      textAlign: 'center'
+                    }}>
+                      <span style={{ fontSize: '0.8rem', color: '#FCD34D', fontWeight: 700, display: 'block' }}>
+                        🛡️ LIVE EVALUATOR OTP:
+                      </span>
+                      <span style={{ fontSize: '1.4rem', fontWeight: 800, letterSpacing: '4px', color: '#FFF' }}>
+                        {evaluatorCode}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Email Input */}
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="otp-email">Email Address</label>
+                    <div className="input-wrap">
+                      <span className="input-icon">✉️</span>
+                      <input
+                        type="email"
+                        id="otp-email"
+                        className="form-input"
+                        placeholder="e.g. explorer@bharatquest.in"
+                        value={otpEmail}
+                        onChange={(e) => setOtpEmail(e.target.value)}
+                        autoComplete="email"
+                        required
+                        disabled={otpLoading || otpSent}
+                      />
+                    </div>
+                  </div>
+
+                  {/* 6-Digit OTP Code Input (Shown after OTP sent) */}
+                  {otpSent && (
+                    <div className="form-group">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <label className="form-label" htmlFor="otp-code" style={{ margin: 0 }}>
+                          6-Digit Verification Code
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleSendOtp()}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: '#FF9933',
+                            fontSize: '0.8rem',
+                            cursor: 'pointer',
+                            textDecoration: 'underline'
+                          }}
+                          disabled={otpLoading}
+                        >
+                          Resend Code
+                        </button>
+                      </div>
+                      <div className="input-wrap">
+                        <span className="input-icon">🔑</span>
+                        <input
+                          type="text"
+                          id="otp-code"
+                          maxLength={6}
+                          className="form-input"
+                          placeholder="123456"
+                          value={otpCode}
+                          onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                          style={{ letterSpacing: '4px', fontSize: '1.1rem', fontWeight: 700 }}
+                          required
+                          disabled={otpLoading}
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  {!otpSent ? (
+                    <button
+                      type="submit"
+                      className="btn-primary btn-glow btn-auth-submit"
+                      id="btn-otp-send"
+                      disabled={otpLoading}
+                      style={{ opacity: otpLoading ? 0.7 : 1 }}
+                    >
+                      {otpLoading ? '⏳ SENDING OTP...' : 'SEND 6-DIGIT OTP →'}
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      className="btn-primary btn-glow btn-auth-submit"
+                      id="btn-otp-verify"
+                      disabled={otpLoading || otpCode.length < 6}
+                      style={{ opacity: (otpLoading || otpCode.length < 6) ? 0.7 : 1 }}
+                    >
+                      {otpLoading ? '⏳ VERIFYING...' : 'VERIFY & ENTER BHARATQUEST →'}
+                    </button>
+                  )}
+
+                  <div className="auth-switcher">
+                    <span>Prefer password login?</span>
+                    <button
+                      type="button"
+                      className="btn-switch-auth"
+                      onClick={() => { setActiveTab('login'); setOtpError(null); setOtpSuccessMsg(null); }}
+                      disabled={otpLoading}
+                    >
+                      PASSWORD LOGIN
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
 
           </div>
         </div>

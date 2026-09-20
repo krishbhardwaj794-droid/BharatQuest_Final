@@ -30,6 +30,8 @@ function BharatQuestApp() {
     isLoadingSession,
     login,
     register,
+    sendOtp,
+    verifyOtp,
     logout,
     gainXP,
     deductXP,
@@ -163,6 +165,8 @@ function BharatQuestApp() {
         <AuthScreen
           onLogin={login}
           onRegister={register}
+          onSendOtp={sendOtp}
+          onVerifyOtp={verifyOtp}
           onLoginSuccess={handleLoginSuccess}
           onRegisterSuccess={handleRegisterSuccess}
         />
