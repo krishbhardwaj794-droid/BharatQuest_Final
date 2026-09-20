@@ -166,8 +166,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
     e.preventDefault();
     setRegOtpError(null);
 
-    if (!regOtpCode.trim() || regOtpCode.length < 6) {
-      setRegOtpError('Please enter the full 6-digit OTP code.');
+    if (!regOtpCode.trim() || regOtpCode.trim().length < 6) {
+      setRegOtpError('Please enter your complete verification code (6–8 digits).');
       return;
     }
 
@@ -562,7 +562,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                     <div className="auth-header">
                       <h2 className="auth-title">Verify Email with OTP</h2>
                       <p className="auth-sub" style={{ margin: 0 }}>
-                        Enter the 6-digit OTP code sent to your email <strong style={{ color: '#E8B042' }}>{regEmail}</strong>.
+                        Enter the verification code sent to your email <strong style={{ color: '#E8B042' }}>{regEmail}</strong>.
                       </p>
                     </div>
 
@@ -574,7 +574,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                       <div className="form-group">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                           <label className="form-label" htmlFor="reg-otp" style={{ margin: 0 }}>
-                            6-Digit OTP Code
+                            Verification Code (6–8 Digits)
                           </label>
                           <button
                             type="button"
@@ -597,13 +597,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                           <input
                             type="text"
                             id="reg-otp"
-                            maxLength={6}
+                            maxLength={8}
                             className="form-input"
-                            placeholder="e.g. 123456"
+                            placeholder="e.g. 12345678"
                             value={regOtpCode}
-                            onChange={(e) => setRegOtpCode(e.target.value.replace(/\D/g, ''))}
+                            onChange={(e) => setRegOtpCode(e.target.value.trim())}
                             style={{
-                              letterSpacing: '5px',
+                              letterSpacing: '4px',
                               fontSize: '1.25rem',
                               fontWeight: 800,
                               textAlign: 'center'
@@ -619,8 +619,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                         type="submit"
                         className="btn-primary btn-glow btn-auth-submit"
                         id="btn-verify-reg-otp"
-                        disabled={regOtpLoading || regOtpCode.length < 6}
-                        style={{ opacity: (regOtpLoading || regOtpCode.length < 6) ? 0.7 : 1 }}
+                        disabled={regOtpLoading || regOtpCode.trim().length < 6}
+                        style={{ opacity: (regOtpLoading || regOtpCode.trim().length < 6) ? 0.7 : 1 }}
                       >
                         {regOtpLoading ? '⏳ VERIFYING OTP...' : 'VERIFY & COMPLETE REGISTRATION →'}
                       </button>

@@ -398,15 +398,25 @@ export const PlayerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    // Standard Supabase verifyOtp
-    const { data, error } = await supabase.auth.verifyOtp({
+    // Standard Supabase verifyOtp: Try 'signup' token first (from registration), then fallback to 'email'
+    let { data, error } = await supabase.auth.verifyOtp({
       email: cleanEmail,
       token: token.trim(),
-      type: 'email'
+      type: 'signup'
     });
 
     if (error) {
-      return { success: false, error: error.message || 'Invalid or expired OTP verification code.' };
+      const fallbackRes = await supabase.auth.verifyOtp({
+        email: cleanEmail,
+        token: token.trim(),
+        type: 'email'
+      });
+      data = fallbackRes.data;
+      error = fallbackRes.error;
+    }
+
+    if (error) {
+      return { success: false, error: error.message || 'Invalid or expired verification code.' };
     }
 
     if (data.user && meta?.name) {
